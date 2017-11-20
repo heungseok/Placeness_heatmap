@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Visualization of Placeness Heatmap of Seoul</title>
+
+    <style>
+        .counties {
+            stroke: black;
+            stroke-widows: 1px;
+        }
+
+        div.tooltip {
+            position: absolute;
+            text-align: center;
+
+            padding: 5px;
+            font: 14px arial;
+            font-weight: bold;
+            color: black;
+            background: lightsteelblue;
+            border: 0px;
+            border-radius: 8px;
+            pointer-events: none;
+        }
+
+        #chart{
+            margin-left : 20px;
+            padding: 3px;
+        }
+        div.outer{
+            width:100%;
+
+        }
+        div.inner{
+            display: inline-block;
+
+        }
+
+
+
+
+    </style>
+
+
+</head>
+
+
+<body>
+
+<div id="chart">
+    <h3 id="chart_title">Types of placeness in Seoul city</h3>
+    <div class="outer">
+        <!--<input class="updateButton btn" type="button" value="Tweet" onclick="updateData(value)">-->
+        <div class="inner">
+            <h4>Time</h4>
+            <input class="updateButton btn" type="button" value="Morning" onclick="updateData(value)">
+            <input class="updateButton btn" type="button" value="Afternoon" onclick="updateData(value)">
+            <input class="updateButton btn" type="button" value="Evening" onclick="updateData(value)">
+            <input class="updateButton btn" type="button" value="Night" onclick="updateData(value)">
+        </div>
+
+        <div class="inner">
+            <h4>Activity (Occasion)</h4>
+            <input class="updateButton btn" type="button" value="Meal" onclick="updateData(value)">
+            <input class="updateButton btn" type="button" value="Cultural Activity" onclick="updateData(value)">
+            <input class="updateButton btn" type="button" value="Demonstration" onclick="updateData(value)">
+            <input class="updateButton btn" type="button" value="Trip" onclick="updateData(value)">
+        </div>
+
+    </div>
+
+</div>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+<script src="https://d3js.org/topojson.v2.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css">
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/js/bootstrap.min.js"></script>
+
+
+
+<script>
+
+
+    var width = 1000,
+        height = 800;
+
+    var svg = d3.select("#chart").append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+
+    var projection = d3.geoMercator()
+        .center([126.9898, 37.5621])
+        .scale(100000)
+        .translate([width/2, height/2]);
+
+    var path = d3.geoPath().projection(projection);
+
+    var x = d3.scaleLinear()
+        .domain([1, 10])
+        .rangeRound([600, 800]);
+
+    var color = d3.scaleThreshold()
+        .domain(d3.range(2,10))
+        .range(d3.schemeBlues[9]);
+
+    var g = svg.append("g")
+        .attr("class", "key")
+        .attr("transform", "translate(0,40)");
+
+    var tooltip;
+
+
+    g.selectAll("rect")
+        .data(color.range().map(function (d) {
+
+            d = color.invertExtent(d);
+            if (d[0] == null) d[0] = x.domain()[0];
+            if (d[1] == null) d[1] = x.domain()[1];
+            return d;
+        }))
+        .enter().append("rect")
+        .attr("height", 8)
+        .attr("x", function (d) {return x(d[0]);})
+        .attr("width", function (d) { return x(d[1]) - x(d[0]); })
+        .attr("fill", function (d) {return color(d[0]);});
+
+    g.append("text")
+        .attr("class", "caption")
+        .attr("x", x.range()[0])
+        .attr("y", -6)
+        .attr("fill", "#000")
+        .attr("font-size", "12px")
+        .attr("text-anchor", "start")
+        .attr("font-weight", "bold")
+        .text("placeness-x's rate");
+
+    g.call(d3.axisBottom(x)
+        .tickSize(13)
+        .tickFormat(function (x, i) { return i ? x : x + "";})
+        .tickValues(color.domain()))
+        .select(".domain")
+        .remove();
+
+
+    var placeness = d3.map();
+    var labels = d3.map();
+    var placeness_value = [];
+
+
+    d3.queue()
+        .defer(d3.json, "./data/seoul_dong_final.json")
+//        .defer(d3.csv, "./data/placeness_value_normalized.csv", function (data) {
+        .defer(d3.csv, "./data/placeness_value.csv", function (data) {
+            placeness_value.push(data);
+            placeness.set(data.id, +data.morning);
+            labels.set(data.id, data['name-kr']);
+
+            d3.select(".caption").text("placeness-Morning's rate");
+            d3.select("#chart_title").text("Types of placeness in Seoul city (Morning)");
+        })
+        .await(ready);
+
+
+
+
+    function ready(error, seoul) {
+        if(error) throw error;
+
+        svg.append("g")
+            .attr("class", "counties")
+            .selectAll("path")
+//            .data(topojson.feature(seoul, seoul.objects.seoul_neighborhoods_geo).features)
+            .data(topojson.feature(seoul, seoul.objects.myfile).features)
+            .enter().append("path")
+            .attr("class", "dong")
+            .attr("id", function(d) { return d.properties.adm_dr_cd})
+            .attr("fill", function (d) {
+//                return color(d.rate = unemployment.get(d.properties.EMD_CD));
+                return color(d.rate = placeness.get(d.properties.adm_dr_cd));
+            })
+            .attr("d", path)
+            .on("mouseover", function(d){
+
+                // display tooltip
+                tooltip.transition()
+                    .duration(200)
+                    .style("opacity", .9);
+                tooltip.html(labels.get(d.properties.adm_dr_cd) + ": " + d.rate + "")
+
+                    .style("left", (d3.event.pageX) + "px")
+                    .style("top", (d3.event.pageY - 28) + "px")
+                    .style("position", "absolute");
+            })
+            .on("mouseout", function(d){
+                tooltip.transition()
+                    .duration(500)
+                    .style("opacity", 0);
+
+            });
+
+        // init tooltip
+        tooltip = d3.select("body").append("div")
+            .attr("class", "tooltip")
+            .style("z-index", 1000)
+            .style("opactiy", 0);
+
+    }
+
+
+    function updateData(value) {
+
+        var target_value = d3.map();
+        placeness_value.forEach(function(data){
+            target_value.set(data.id, data[String(value).toLowerCase()]);
+
+        });
+
+        d3.selectAll('.dong').transition()
+            .duration(750)
+            .attr("fill", function (d) {
+                return color(d.rate = target_value.get(d.properties.adm_dr_cd));
+            });
+
+        d3.select(".caption")
+            .transition()
+            .duration(750)
+            .text("placeness-" + value + "'s rate");
+
+        d3.select("#chart_title")
+            .text("Types of placeness in Seoul city (" + value + ")");
+
+
+    }
+
+
+</script>
+
+</body>
+</html>
